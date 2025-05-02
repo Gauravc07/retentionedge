@@ -1,0 +1,319 @@
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  STUDENT
+  PROFESSOR
+  PARENT
+}
+
+enum InterventionStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum InterventionType {
+  EMAIL
+  MEETING
+  TUTORING
+  COUNSELING
+  OTHER
+}
+
+enum MeetingStatus {
+  REQUESTED
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum GradeType {
+  ASSIGNMENT
+  QUIZ
+  MIDTERM
+  FINAL
+  PROJECT
+  LAB
+  ATTENDANCE
+  OTHER
+}
+
+model User {
+  id             String    @id @default(cuid())
+  email          String    @unique
+  password       String
+  name           String
+  role           UserRole
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // Role-specific relations
+  student        Student?
+  professor      Professor?
+  parent         Parent?
+  
+  // Common relations
+  sentMessages   Message[] @relation("SentMessages")
+  receivedMessages Message[] @relation("ReceivedMessages")
+  calendarEvents CalendarEvent[] @relation("UserEvents")
+}
+
+model Student {
+  id             String    @id @default(cuid())
+  userId         String    @unique
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  studentId      String    @unique
+  institution    String
+  currentGpa     Float?
+  dropoutRisk    Float?    @default(0) // 0-100 scale
+  
+  // Relations
+  enrollments    Enrollment[]
+  attendanceRecords AttendanceRecord[]
+  grades         Grade[]
+  parents        StudentParent[]
+  interventions  Intervention[] @relation("StudentInterventions")
+  feedbacks      Feedback[]
+  wellbeingSurveys WellbeingSurvey[]
+}
+
+model Professor {
+  id             String    @id @default(cuid())
+  userId         String    @unique
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  department     String
+  institution    String
+  
+  // Relations
+  courses        Course[]
+  interventions  Intervention[] @relation("ProfessorInterventions")
+  meetings       Meeting[] @relation("ProfessorMeetings")
+}
+
+model Parent {
+  id             String    @id @default(cuid())
+  userId         String    @unique
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Relations
+  students       StudentParent[]
+  meetings       Meeting[] @relation("ParentMeetings")
+}
+
+model StudentParent {
+  id             String    @id @default(cuid())
+  studentId      String
+  parentId       String
+  relationship   String    // e.g., "Mother", "Father", "Guardian"
+  
+  // Relations
+  student        Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  parent         Parent    @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  
+  @@unique([studentId, parentId])
+}
+
+model Course {
+  id             String    @id @default(cuid())
+  name           String
+  code           String
+  description    String?
+  semester       String
+  academicYear   String
+  professorId    String
+  credits        Int       @default(3)
+  maxCapacity    Int?
+  
+  // Relations
+  professor      Professor @relation(fields: [professorId], references: [id])
+  enrollments    Enrollment[]
+  attendanceDays AttendanceDay[]
+  assignments    Assignment[]
+  gradeItems     GradeItem[]
+  
+  @@unique([code, semester, academicYear])
+}
+
+model Enrollment {
+  id             String    @id @default(cuid())
+  studentId      String
+  courseId       String
+  enrollmentDate DateTime  @default(now())
+  status         String    @default("active") // active, dropped, completed
+  
+  // Relations
+  student        Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  course         Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  
+  @@unique([studentId, courseId])
+}
+
+model AttendanceDay {
+  id             String    @id @default(cuid())
+  courseId       String
+  date           DateTime
+  
+  // Relations
+  course         Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  records        AttendanceRecord[]
+  
+  @@unique([courseId, date])
+}
+
+model AttendanceRecord {
+  id             String    @id @default(cuid())
+  studentId      String
+  attendanceDayId String
+  isPresent      Boolean
+  
+  // Relations
+  student        Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  attendanceDay  AttendanceDay @relation(fields: [attendanceDayId], references: [id], onDelete: Cascade)
+  
+  @@unique([studentId, attendanceDayId])
+}
+
+model Assignment {
+  id             String    @id @default(cuid())
+  title          String
+  description    String?
+  courseId       String
+  dueDate        DateTime
+  maxScore       Float
+  weight         Float     // Percentage weight in the course
+  
+  // Relations
+  course         Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  grades         Grade[]
+}
+
+model GradeItem {
+  id             String    @id @default(cuid())
+  title          String
+  description    String?
+  courseId       String
+  type           GradeType
+  maxScore       Float
+  weight         Float     // Percentage weight in the course
+  dueDate        DateTime?
+  
+  // Relations
+  course         Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  grades         Grade[]
+}
+
+model Grade {
+  id             String    @id @default(cuid())
+  studentId      String
+  assignmentId   String?
+  gradeItemId    String?
+  score          Float
+  submissionDate DateTime?
+  feedback       String?
+  
+  // Relations
+  student        Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  assignment     Assignment? @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
+  gradeItem      GradeItem? @relation(fields: [gradeItemId], references: [id], onDelete: SetNull)
+  
+  @@unique([studentId, assignmentId])
+  @@unique([studentId, gradeItemId])
+}
+
+model Intervention {
+  id             String    @id @default(cuid())
+  studentId      String
+  professorId    String
+  type           InterventionType
+  description    String
+  status         InterventionStatus @default(PENDING)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  completedAt    DateTime?
+  
+  // Relations
+  student        Student   @relation("StudentInterventions", fields: [studentId], references: [id], onDelete: Cascade)
+  professor      Professor @relation("ProfessorInterventions", fields: [professorId], references: [id], onDelete: Cascade)
+  meetings       Meeting[]
+}
+
+model Meeting {
+  id             String    @id @default(cuid())
+  title          String
+  description    String?
+  professorId    String
+  parentId       String?
+  interventionId String?
+  scheduledAt    DateTime
+  duration       Int       // in minutes
+  location       String?
+  status         MeetingStatus @default(REQUESTED)
+  
+  // Relations
+  professor      Professor @relation("ProfessorMeetings", fields: [professorId], references: [id], onDelete: Cascade)
+  parent         Parent?   @relation("ParentMeetings", fields: [parentId], references: [id])
+  intervention   Intervention? @relation(fields: [interventionId], references: [id])
+  calendarEvent  CalendarEvent?
+}
+
+model CalendarEvent {
+  id             String    @id @default(cuid())
+  title          String
+  description    String?
+  startTime      DateTime
+  endTime        DateTime
+  location       String?
+  meetingId      String?   @unique
+  
+  // Relations
+  meeting        Meeting?  @relation(fields: [meetingId], references: [id])
+  attendees      User[]    @relation("UserEvents")
+}
+
+model Message {
+  id             String    @id @default(cuid())
+  senderId       String
+  receiverId     String
+  subject        String
+  content        String
+  read           Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  
+  // Relations
+  sender         User      @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver       User      @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+}
+
+model Feedback {
+  id             String    @id @default(cuid())
+  studentId      String
+  content        String
+  createdAt      DateTime  @default(now())
+  
+  // Relations
+  student        Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+}
+
+model WellbeingSurvey {
+  id             String    @id @default(cuid())
+  studentId      String
+  academicStress Int       
+  socialWellbeing Int      
+  mentalHealth   Int       
+  physicalHealth Int       
+  sleepQuality   Int       
+  additionalNotes String?
+  createdAt      DateTime  @default(now())
+  
+  // Relations
+  student        Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+}
