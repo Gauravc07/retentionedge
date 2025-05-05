@@ -96,9 +96,16 @@ export function SidebarNav({ role }: SidebarNavProps) {
       },
       {
         title: "Analytics",
-        href: "/dashboard/professor/analytics",
-        icon: BarChart3,
+        href: "http://localhost:3001",
+        icon: BarChart3, 
+        external: true, 
       },
+      
+      // {
+      //   title: "Analytics",
+      //   href: "/dashboard/professor/analytics",
+      //   icon: BarChart3,
+      // },
       {
         title: "Alerts",
         href: "/dashboard/professor/alerts",
